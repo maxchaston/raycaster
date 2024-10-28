@@ -14,24 +14,32 @@ SDL_Renderer* renderer;
 #define MAP_X 20
 #define MAP_Y 20
 
-#define FOV 90
-
-float sind(float angle);
-float cosd(float angle);
-float tand(float angle);
-
-float fix_zero(float num)
-{
-	if (num==0)
-	{
-		return 0.00000001;
-	} else
-	{
-		return num;
-	}
-}
+#define FOV 90.0
+#define RENDER_LIMIT 5
 
 
+/**
+	 , , , , , , , , , , , , , , , , , , , ,
+	 , , , , , , , , , , , , , , , , , , , ,
+	 , , , , , , , , ,#,#,#,#,#,#,#, , , , ,
+	 , , , , , , , ,#, , , , , , ,#, , , , ,
+	 , , , , , , ,#, , , , , , , ,#, , , , ,
+	 , , , ,#,#,#, , , , , , , , ,#, , , , ,
+	 , , , ,#, , , , , , , , , , ,#, , , , ,
+	 , , ,#, , , , , , , , , , , ,#, , , , ,
+	 , , ,#, , , , , , , , , , , ,#, , , , ,
+	 , , ,#, , , , , , , , , , , ,#, , , , ,
+	 , , ,#, , , , , , , , , , , ,#, , , , ,
+	 , , , ,#, , , , , , , , , , ,#, , , , ,
+	 , , , , ,#, , , , , , , , ,#, , , , , ,
+	 , , , , ,#, , , , , , , ,#, , , , , , ,
+	 , , , , ,#, , , , , , ,#, , , , , , , ,
+	 , , , , ,#, , , , , ,#, , , , , , , , ,
+	 , , , , ,#,#,#,#,#,#, , , , , , , , , ,
+	 , , , , , , , , , , , , , , , , , , , ,
+	 , , , , , , , , , , , , , , , , , , , ,
+	 , , , , , , , , , , , , , , , , , , , 
+ **/
 int map[MAP_X*MAP_Y] = 
 {
 	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -56,10 +64,12 @@ int map[MAP_X*MAP_Y] =
 	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
 
+// Data structures ///////////////////////////////////////////////////////////////////////////////////////////
+
 typedef struct player_state {
 	float x; // x and y are based on map coords
 	float y;
-	float angle; // angle in rads
+	float angle; // angle in degrees
 } player_state;
 player_state p_s;
 
@@ -68,10 +78,12 @@ typedef struct position {
 	float y;
 } position;
 
+// Functions ////////////////////////////////////////////////////////////////////////////////////////////////
+// setup and teardown ///////////////////////////////////////////////////////////////////////////////////////
 void init()
 {
 	SDL_Init(SDL_INIT_EVERYTHING);
-	window = SDL_CreateWindow("doomv2", SDL_WINDOWPOS_UNDEFINED,
+	window = SDL_CreateWindow("raycasting", SDL_WINDOWPOS_UNDEFINED,
 														SDL_WINDOWPOS_UNDEFINED,
 														WINDOW_X,
 														WINDOW_Y,
@@ -89,9 +101,15 @@ void teardown()
 	SDL_DestroyWindow(window);
 }
 
+// util functions ///////////////////////////////////////////////////////////////////////////////////////////
 float deg_to_rad(float deg)
 {
 	return deg/360*2*M_PI;
+}
+
+float angle_calc(float angle, float change)
+{
+	return fmod(angle + change+360, 360);
 }
 
 void modify_player_state(int move_type)
@@ -115,21 +133,190 @@ void modify_player_state(int move_type)
 		p_s.y = new_y;
 		break;
 	case 3: // counter-clockwise rotation
-		new_angle = fmod(p_s.angle - ROTATION_SPEED+360, 360);
+		new_angle = angle_calc(p_s.angle, -ROTATION_SPEED);
 		p_s.angle = new_angle;
 		break;
 	case 4: // clockwise rotation
-		new_angle = fmod(p_s.angle + ROTATION_SPEED+360, 360);
+		new_angle = angle_calc(p_s.angle, ROTATION_SPEED);
 		p_s.angle = new_angle;
 		break;
 	}
 }
 
-position raycast(position pos, float angle)
+float sind(float angle)
 {
+	return sinf(deg_to_rad(angle));
 }
 
+float cosd(float angle)
+{
+	return cosf(deg_to_rad(angle));
+}
 
+float tand(float angle)
+{
+	return tanf(deg_to_rad(angle));
+}
+
+float fix_zero(float num)
+{
+	if (num==0)
+	{
+		return 0.00000001;
+	} else
+	{
+		return num;
+	}
+}
+
+position pos2win(position pos)
+{
+	float win_x = pos.x * (float)WINDOW_X/MAP_X;
+	float win_y = WINDOW_Y - pos.y*(float)WINDOW_Y/MAP_Y;
+	return (position){win_x,win_y};
+}
+
+void draw_line_pos(position p1, position p2)
+{
+	position p1w = pos2win(p1);
+	position p2w = pos2win(p2);
+	SDL_RenderDrawLine(renderer, p1w.x, p1w.y, p2w.x, p2w.y);
+}
+
+void draw_box_pos(position pos, float size)
+{
+	pos.x-=size/2;
+	pos.y+=size/2;
+	position box_pos_win = pos2win(pos);
+	SDL_Rect rect = {box_pos_win.x, box_pos_win.y, size*WINDOW_X/MAP_X, size*WINDOW_Y/MAP_Y};
+	SDL_RenderFillRect(renderer, &rect);
+}
+
+// rendering functions ////////////////////////////////////////////////////////////////////////////////////
+
+float raycast(position pos, float angle)
+{
+	bool ray_collision = false;
+	float ray_length = 0;
+	float gradient;
+	if (angle==0)
+		angle = 0.0001;
+	if (angle==180)
+		angle = 180.001;
+	/* if (angle==0 || angle==180) */
+	/* 	gradient = 9999; // hacky workaround */
+	/* else */
+	gradient = cosd(angle)/sind(angle);;
+	float c = pos.y - gradient*pos.x;
+
+	while (ray_length<RENDER_LIMIT)
+	{
+		bool on_x = (pos.x == floor(pos.x));
+		bool on_y = (pos.y == floor(pos.y));
+		if (on_x || on_y) // on a line
+		{
+			SDL_SetRenderDrawColor(renderer, 160, 32, 240, 255); // GREEN
+			draw_box_pos(pos, 0.2);
+			position map_pos;
+
+			if (on_x)
+				map_pos = (position){(int)pos.x - ((angle>180) ? 1 : 0), (int)pos.y+1};
+			if (on_y)
+				map_pos = (position){(int)pos.x, (int)pos.y + ((angle>270 || angle<90) ? 1 : 0)};
+
+			if (map[(int)map_pos.x + (MAP_Y-(int)map_pos.y)*MAP_X])
+			{
+					SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+					map_pos.x+=0.5;
+					map_pos.y-=0.5;
+					draw_box_pos(map_pos, 0.2);
+					return ray_length;
+			}
+		}
+
+		float testing_x_x = (angle<=180) ? floor(pos.x+1) : ceil(pos.x-1);
+		float testing_y_y = (angle>270 || angle<90) ? floor(pos.y+1) : ceil(pos.y-1);
+
+		float testing_x_y = testing_x_x*gradient + c;
+		float testing_x_dist = sqrtf(pow(testing_x_x - pos.x, 2) + pow(testing_x_y - pos.y, 2));
+
+		float testing_y_x = (testing_y_y - c)/gradient;
+		float testing_y_dist = sqrt(pow(testing_y_x - pos.x, 2) + pow(testing_y_y - pos.y, 2));
+
+		if (testing_x_dist<testing_y_dist) // hit horizontal line first
+		{
+			pos.x = testing_x_x;
+			pos.y = testing_x_y;
+			ray_length += testing_x_dist;
+		} else { // hit vertical line first
+			pos.x = testing_y_x;
+			pos.y = testing_y_y;
+			ray_length += testing_y_dist;
+		}
+	}
+}
+
+void clear_screen()
+{
+	SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+	SDL_RenderClear(renderer);
+}
+
+void draw_2d()
+{
+	// map blocks
+	SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255); // GREEN
+	for (int x=0; x<MAP_X; x++)
+	{
+		for (int y=0; y<MAP_Y; y++)
+		{
+			position block_win_pos = pos2win((position){x, y});
+			if (map[x+((MAP_Y-y)*MAP_X)])
+			{
+				SDL_Rect map_rect = {block_win_pos.x, block_win_pos.y, WINDOW_X/MAP_X, WINDOW_Y/MAP_Y};
+				SDL_RenderFillRect(renderer, &map_rect);
+			}
+		}
+	}
+
+	// rays
+	int ray_num=100;
+	for (int r=0; r<ray_num; r++) // iterating through rays
+	{
+		float ray_angle = angle_calc(p_s.angle-(FOV/2), FOV/(ray_num-1)*r);
+		position ray1_win_pos = pos2win((position){p_s.x, p_s.y});
+		/* position ray2_win_pos = pos2win((position){p_s.x + sind(ray_angle)*RENDER_LIMIT, p_s.y + cosd(ray_angle)*RENDER_LIMIT}); */
+		position ray2_win_pos = pos2win((position){p_s.x + sind(ray_angle)*raycast((position){p_s.x, p_s.y}, ray_angle), p_s.y + cosd(ray_angle)*raycast((position){p_s.x, p_s.y}, ray_angle)});
+		SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255); // BLUE
+		SDL_RenderDrawLine(renderer, ray1_win_pos.x, ray1_win_pos.y, ray2_win_pos.x, ray2_win_pos.y);
+	}
+
+	// player
+	position player_win_pos = pos2win((position){p_s.x, p_s.y});
+	SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255); // RED
+	float player_rect_width = 20.0;
+	SDL_Rect player_rect = {p_s.x * (WINDOW_X/MAP_X) - (player_rect_width/2), WINDOW_Y - p_s.y * (WINDOW_Y/MAP_Y) - (player_rect_width/2), player_rect_width, player_rect_width};
+	SDL_RenderFillRect(renderer, &player_rect);
+	/* position player_dir_line_win_pos = pos2win((position){p_s.x + sind(p_s.angle), p_s.y + cosd(p_s.angle)}); */
+	/* SDL_RenderDrawLine(renderer, player_win_pos.x, player_win_pos.y, player_dir_line_win_pos.x, player_dir_line_win_pos.y); */
+
+	// grid
+	SDL_SetRenderDrawColor(renderer, 50, 50, 50, 0); // grey
+	for (int x=0; x<MAP_X; x++)
+	{
+		position x1 = (position){x,0};
+		position x2 = (position){x,MAP_Y};
+		draw_line_pos(x1, x2);
+	}
+	for (int y=0; y<MAP_Y; y++)
+	{
+		position y1 = (position){0,y};
+		position y2 = (position){MAP_X,y};
+		draw_line_pos(y1, y2);
+	}
+}
+
+// event handling /////////////////////////////////////////////////////////////////////////////////////////
 void handle_events(int *run_flag)
 {
 	SDL_Event event;
@@ -156,125 +343,7 @@ void handle_events(int *run_flag)
 		modify_player_state(4);
 }
 
-void clear_screen()
-{
-	SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
-	SDL_RenderClear(renderer);
-}
 
-void draw_2d(bool fixed, bool raycasting)
-{
-	if (fixed)
-	{
-		// map
-		SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-		for (int x=0; x<MAP_X; x++)
-		{
-			for (int y=0; y<MAP_Y; y++)
-			{
-				if (map[x+(y*MAP_X)])
-				{
-					SDL_Rect map_rect = {WINDOW_X/MAP_X * x, WINDOW_Y/MAP_Y * y, WINDOW_X/MAP_X, WINDOW_Y/MAP_Y};
-					SDL_RenderFillRect(renderer, &map_rect);
-				}
-			}
-		}
-		// player
-		SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-		float player_rect_width = 20;
-		SDL_Rect player_rect = {p_s.x * (WINDOW_X/MAP_X) - (player_rect_width/2), WINDOW_Y - p_s.y * (WINDOW_Y/MAP_Y) - (player_rect_width/2), player_rect_width, player_rect_width};
-		SDL_RenderFillRect(renderer, &player_rect);
-		SDL_RenderDrawLine(renderer, p_s.x * (WINDOW_X/MAP_X), WINDOW_Y - p_s.y * (WINDOW_Y/MAP_Y), p_s.x * (WINDOW_X/MAP_X) +(sin(deg_to_rad(p_s.angle))*30), WINDOW_Y - (p_s.y * (WINDOW_Y/MAP_Y)  + cos(deg_to_rad(p_s.angle))*30));
-		if (raycasting)
-		{
-			// raycast lines
-			SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
-			int raycast_line_count = 45;
-			for (int i=0; i<raycast_line_count; i++)
-			{
-				float ray_angle = fmod(p_s.angle - (FOV/2) + (FOV/raycast_line_count*i)+360, 360);
-				position raycast_pos = {p_s.x, p_s.y};
-				position ray_terminus_pos = raycast(raycast_pos, ray_angle);
-				SDL_RenderDrawLine(renderer, p_s.x * (WINDOW_X/MAP_X), WINDOW_Y - p_s.y * (WINDOW_Y/MAP_Y), ray_terminus_pos.x * (WINDOW_X/MAP_X), WINDOW_Y - ray_terminus_pos.y * (WINDOW_Y/MAP_Y));
-			}
-		}
-	} else {
-		// map
-		SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-		for (int x=0; x<MAP_X; x++)
-		{
-			for (int y=0; y<MAP_Y; y++)
-			{
-				if (map[x+(y*MAP_X)])
-				{
-					SDL_Rect map_rect = {WINDOW_X/MAP_X * x + (400 - p_s.x*(WINDOW_X/MAP_X)), WINDOW_Y/MAP_Y * y + (400-p_s.y*(WINDOW_Y/MAP_Y)), WINDOW_X/MAP_X, WINDOW_Y/MAP_Y};
-					SDL_RenderFillRect(renderer, &map_rect);
-				}
-			}
-		}
-		// player
-		SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-		float player_rect_width = 20;
-		SDL_Rect player_rect = {WINDOW_X/2-player_rect_width/2, WINDOW_Y/2-player_rect_width/2, player_rect_width, player_rect_width};
-		SDL_RenderFillRect(renderer, &player_rect);
-		SDL_RenderDrawLine(renderer, WINDOW_X/2, WINDOW_Y/2, WINDOW_X/2+(sin(deg_to_rad(p_s.angle))*30), WINDOW_Y/2-cos(deg_to_rad(p_s.angle))*30);
-	}
-}
-
-void draw_minimap(bool fixed)
-{
-	if (fixed)
-	{
-		// draw map
-		// draw map box outline
-		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-		SDL_RenderDrawRect(renderer, &((SDL_Rect) {0, 0, WINDOW_X*0.2, WINDOW_Y*0.2}));
-		SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-		for (int x=0; x<MAP_X; x++)
-		{
-			for (int y=0; y<MAP_Y; y++)
-			{
-				if (map[x+(y*MAP_X)])
-				{
-					SDL_Rect map_rect = {WINDOW_X/MAP_X * x * 0.2, WINDOW_Y/MAP_Y * y * 0.2, WINDOW_X/MAP_X*0.2, WINDOW_Y/MAP_Y*0.2};
-					SDL_RenderFillRect(renderer, &map_rect);
-				}
-			}
-		}
-		// draw player
-		SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-		float player_rect_width = 20*0.2;
-		SDL_Rect player_rect = {p_s.x*(WINDOW_X/MAP_X)*0.2-(player_rect_width/2), WINDOW_Y*0.2 - p_s.y*(WINDOW_Y/MAP_Y)*0.2-(player_rect_width/2), player_rect_width, player_rect_width};
-		SDL_RenderFillRect(renderer, &player_rect);
-		SDL_RenderDrawLine(renderer, p_s.x * (WINDOW_X/MAP_X) * 0.2, WINDOW_Y * 0.2 - p_s.y * (WINDOW_Y/MAP_Y) * 0.2, p_s.x * (WINDOW_X/MAP_X)*0.2+(sin(deg_to_rad(p_s.angle))*40*0.2), WINDOW_Y * 0.2 - p_s.y * (WINDOW_Y/MAP_Y)*0.2-cos(deg_to_rad(p_s.angle))*40*0.2);
-	} else {
-		// TODO implement centred minimap drawing
-	}
-}
-
-void draw_3d()
-{
-	// one ray cast per pixel on screen
-	for (int i=0; i<WINDOW_X; i++)
-	{
-		float ray_angle = p_s.angle - (FOV/2) + (FOV/WINDOW_X*i);
-	}
-}
-
-float sind(float angle)
-{
-	return sin(deg_to_rad(angle));
-}
-
-float cosd(float angle)
-{
-	return cos(deg_to_rad(angle));
-}
-
-float tand(float angle)
-{
-	return tan(deg_to_rad(angle));
-}
 
 int main()
 {
@@ -284,9 +353,9 @@ int main()
 	{
 		handle_events(&run_flag);
 		clear_screen();
-		draw_2d(true, true);
+		draw_2d();
 		/* draw_3d(); */
-		draw_minimap(true);
+		/* draw_minimap(true); */
 		SDL_RenderPresent(renderer);
 		/* printf("x:%f\ty:%f\tangle:%f\r", p_s.x, p_s.y, p_s.angle); */
 		/* fflush(stdout); */
