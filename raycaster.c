@@ -371,6 +371,7 @@ void draw_3d()
 		float ray_angle = angle_calc(p_s.angle-(FOV/2), FOV/(WINDOW_X-1)*r);
 		raycast_ret ret = raycast((position){p_s.x, p_s.y}, ray_angle);
 		float distance = ret.distance;
+		// TODO add camera plane
 		SDL_SetRenderDrawColor(renderer, 0, 0, (ret.side) ? 255 : 100, 255); // BLUE
 		if (distance != -1)
 			SDL_RenderDrawLine(renderer, r, WINDOW_Y/2 - 1/(distance/3)*WINDOW_X/MAP_X, r, WINDOW_Y/2 + 1/(distance/3)*WINDOW_Y/MAP_Y);
