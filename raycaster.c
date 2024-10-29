@@ -18,8 +18,10 @@ float WINDOW_Y = 800;
 #define MAP_X 20
 #define MAP_Y 20
 
-#define FOV 90.0
+#define FOV 70.0
 #define RENDER_LIMIT 5
+
+#define MAP_BLOCK 3.0
 
 
 /**
@@ -417,12 +419,12 @@ void draw_3d()
 		float ray_angle = angle_calc(p_s.angle-(FOV/2), FOV/(WINDOW_X-1)*r);
 		raycast_ret ret = raycast((position){p_s.x, p_s.y}, ray_angle);
 		float distance = ret.distance;
-		// TODO add camera plane
 		if (distance != -1)
 		{
 			if (distance==0) // removes chance of division by zero 
 				distance = 0.001;
-			float l_height = 1/distance;
+			distance = distance * cosd(angle_calc(ray_angle, -p_s.angle));
+			float l_height = MAP_BLOCK/distance;
 			// ceiling
 			SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0); // BLACK
 			SDL_RenderDrawLine(renderer, r, 0, r, WINDOW_Y/2 - l_height*WINDOW_Y/MAP_Y);
