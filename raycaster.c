@@ -420,7 +420,12 @@ void draw_3d()
 		// TODO add camera plane
 		SDL_SetRenderDrawColor(renderer, 0, 0, (ret.side) ? 255 : 100, 255); // BLUE
 		if (distance != -1)
-			SDL_RenderDrawLine(renderer, r, WINDOW_Y/2 - 1/(distance/3)*WINDOW_X/MAP_X, r, WINDOW_Y/2 + 1/(distance/3)*WINDOW_Y/MAP_Y);
+		{
+			if (distance==0) // removes chance of division by zero 
+				distance = 0.001;
+			float l_height = 1/distance;
+			SDL_RenderDrawLine(renderer, r, WINDOW_Y/2 - l_height*WINDOW_Y/MAP_Y, r, WINDOW_Y/2 + l_height*WINDOW_Y/MAP_Y);
+		}
 	}
 }
 
