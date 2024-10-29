@@ -418,13 +418,22 @@ void draw_3d()
 		raycast_ret ret = raycast((position){p_s.x, p_s.y}, ray_angle);
 		float distance = ret.distance;
 		// TODO add camera plane
-		SDL_SetRenderDrawColor(renderer, 0, 0, (ret.side) ? 255 : 100, 255); // BLUE
 		if (distance != -1)
 		{
 			if (distance==0) // removes chance of division by zero 
 				distance = 0.001;
 			float l_height = 1/distance;
+			// ceiling
+			SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0); // BLACK
+			SDL_RenderDrawLine(renderer, r, 0, r, WINDOW_Y/2 - l_height*WINDOW_Y/MAP_Y);
+
+			// potential wall
+			SDL_SetRenderDrawColor(renderer, 0, 0, (ret.side) ? 255 : 100, 255); // BLUE
 			SDL_RenderDrawLine(renderer, r, WINDOW_Y/2 - l_height*WINDOW_Y/MAP_Y, r, WINDOW_Y/2 + l_height*WINDOW_Y/MAP_Y);
+
+			// floor
+			SDL_SetRenderDrawColor(renderer, 180, 180, 180, 180); // GREY
+			SDL_RenderDrawLine(renderer, r, WINDOW_Y/2 + l_height*WINDOW_Y/MAP_Y, r, WINDOW_Y);
 		}
 	}
 }
@@ -437,7 +446,7 @@ int main()
 	{
 		handle_events(&run_flag);
 		clear_screen();
-		draw_2d();
+		/* draw_2d(); */
 		draw_3d();
 		/* draw_minimap(true); */
 		SDL_RenderPresent(renderer);
